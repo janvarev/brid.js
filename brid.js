@@ -69,7 +69,11 @@ function stringp( a) {
 
 function brid(x, env){
   if( typeof x == "string" ){ // variable reference
-    return getFromEnv(env, x);
+	if(x.substr(0, 2) == "__") { // if not-quoted symbol
+		return getFromEnv(env, x);
+    } else {
+		return x;
+	}
   } else if( hashp(x) ){
     // unlike Clojure, our keys cannot be arbitrary objects
     // so let's not evaluate keys as expressions
@@ -78,9 +82,9 @@ function brid(x, env){
     return x;
   } else if(x.length == 0) {
     return [];
-  } else if(x[0] == 'quote'){
+  } else if(x[0] == '__quote'){
     return x[1];
-  } else if(x[0] == 'if'){
+  } else if(x[0] == '__if'){
     var test   = x[1];
     var conseq = x[2];
     var alt    = x[3];
@@ -89,28 +93,28 @@ function brid(x, env){
       { branch = conseq }
       else { branch = alt };
     return ( brid( branch, env ));
-  } else if(x[0] == 'set!'){
+  } else if(x[0] == '__set!'){
     var v   = x[1];
     var exp = x[2];
     return (setInEnv(env, v, brid(exp, env)));
-  } else if(x[0] == 'define'){
+  } else if(x[0] == '__define'){
     var v   = x[1];
     var exp = x[2];
     return (defInEnv(env, v, brid(exp, env)));
-  } else if(x[0] == 'lambda'){
+  } else if(x[0] == '__lambda'){
     var vars = x[1];
     var exp  = x[2];
     // is it cheating to use the closure from here?
     var r = function(){ return brid( exp, makeEnv(vars, arguments, env) ) };
     return r;
-  } else if(x[0] == 'begin'){
+  } else if(x[0] == '__begin'){
     var args = x.slice(1);
     var r;
     for(var i in args){
       r = brid(args[i], env)
     }
     return r;
-  } else if(x[0] == 'eval'){
+  } else if(x[0] == '__eval'){
     var arg = x[1];
     var r = brid( brid(arg, env), env );
     return r;
@@ -304,44 +308,53 @@ function toJson( obj ){
   return JSON.stringify(obj, fixJson);
 }
 
+function rest(a){
+  var a2 = a.concat([]); // copy array
+  a2.shift();
+  return a2;
+}
+
+
 global = {
   values:{
-    'eq?': eqp,
-    'equal?': equalp,
+    '__eq?': eqp,
+    '__equal?': equalp,
 
-    'list?': arrayp,
-    'map?': hashp,
-    'function?': functionp,
-    'number?': numberp,
-    'string?': stringp,
+    '__list?': arrayp,
+    '__map?': hashp,
+    '__function?': functionp,
+    '__number?': numberp,
+    '__string?': stringp,
 
-    '+': plus,
-    '-': minus,
+    '__+': plus,
+    '__-': minus,
     // TODO: division and modulus
     // TODO: min, max
 
-    '=':  eq,
-    '>':  gt,
-    '>=': gte,
-    '<':  lt,
-    '<=': lte,
+    '__=':  eq,
+    '__>':  gt,
+    '__>=': gte,
+    '__<':  lt,
+    '__<=': lte,
 
-    'get': get,
-    'assoc': assoc,
-    'keys': Object.keys,
-    'values': values,
+    '__get': get,
+    '__assoc': assoc,
+    '__keys': Object.keys,
+    '__values': values,
 
-    'nth': nth,
-    'count': count,
-    'cons': cons,
-    'map': map,
-    'reduce': reduce,
+    '__nth': nth,
+    '__count': count,
+    '__cons': cons,
+    '__map': map,
+    '__reduce': reduce,
 
-    'print': write,
-    'println': writeln,
+    '__print': write,
+    '__println': writeln,
 
-    'serialize': toJson,
-    'unserialize': JSON.parse,
+    '__serialize': toJson,
+    '__unserialize': JSON.parse,
+	
+	'__rest': rest,
   }
 }
 
@@ -362,11 +375,14 @@ function fixJson( key, obj ){
   }
 }
 
+var sread = new SExpReader();
+
 function do_repl(){
   var expression = input();
   write( "> " + expression + "\n");
   try{
-    var e = JSON.parse(expression);
+    //var e = JSON.parse(expression);
+	var e = sread.parseSexp(expression, true);
   } catch(er) {
     write(er + "\n");
     return;
@@ -382,15 +398,26 @@ function do_repl(){
 }
 
 function hello(){
-  return document.getElementById('input').value = JSON.stringify(["println", ["quote", "hello world"]]);
+  return document.getElementById('input').value = '(println "hello world")';
 }
 
 function mapexample(){
-  return document.getElementById('input').value = JSON.stringify(
-    ["map", ["lambda", ["x"], ["+", "x", 1] ], ["quote", [1, 2, 3]] ]
-  );
+  return document.getElementById('input').value = '(map (lambda (x) (+ x 1)) (quote (1 2 3)))';
+  
 }
 
+prelude = [ "__begin",
+  ["__define", "__false", false],
+  ["__define", "__true", true],
+  ["__define", "__#f", false],
+  ["__define", "__#t", true],
+  ["__define", "__null", null],
+  ["__define", "__first", ["__lambda", ["__x"], ["__nth", "__x", 0] ] ],
+]
+
+brid( prelude, global );
+
+/*
 prelude = [ "begin",
   // curried multiplication            
   ["define", "*", ["lambda", ["n"], 
@@ -415,3 +442,4 @@ prelude = [ "begin",
 ]
 
 brid( prelude, global );
+*/
